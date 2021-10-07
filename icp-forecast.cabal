@@ -1,0 +1,53 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           icp-forecast
+version:        0.0.1
+description:    A forecaster for ICP token holders.
+author:         John Wiegley
+maintainer:     john@dfinity.org
+license:        BSD3
+build-type:     Simple
+
+library
+  exposed-modules:
+      Staking
+  other-modules:
+      Paths_icp_forecast
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wno-missing-home-modules
+  build-depends:
+      aeson
+    , base >=4.5 && <5.0
+    , bytestring
+    , containers
+    , mtl
+    , pretty-show
+    , text
+    , time
+    , transformers
+    , unordered-containers
+  default-language: Haskell2010
+
+executable icp-forecast
+  main-is: Main.hs
+  other-modules:
+      Paths_icp_forecast
+  ghc-options: -Wall -Wno-missing-home-modules
+  build-depends:
+      aeson
+    , base >=4.5 && <5.0
+    , bytestring
+    , containers
+    , icp-forecast
+    , mtl
+    , pretty-show
+    , text
+    , time
+    , transformers
+    , unordered-containers
+  default-language: Haskell2010

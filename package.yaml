@@ -1,0 +1,35 @@
+name:        icp-forecast
+version:     0.0.1
+license:     BSD3
+author:      John Wiegley
+maintainer:  john@dfinity.org
+description: A forecaster for ICP token holders.
+
+ghc-options:
+   - -Wall
+   - -Wno-missing-home-modules
+
+dependencies:
+  - aeson
+  - base >= 4.5 && < 5.0
+  - bytestring
+  - containers
+  - mtl
+  - pretty-show
+  - text
+  - time
+  - transformers
+  - unordered-containers
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - Staking
+  # dependencies:
+
+executables:
+  icp-forecast:
+    main: Main.hs
+    # other-modules:
+    dependencies:
+      - icp-forecast
