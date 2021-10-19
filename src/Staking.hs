@@ -1,14 +1,14 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Staking where
 
 import Amount
 import Control.Exception (assert)
-import Control.Monad.State
+import Control.Monad.State hiding (lift)
 import Data.Ratio
-
--- import Debug.Trace
 
 type Seconds = Integer
 
@@ -21,6 +21,9 @@ oneDaySeconds = 24 * 60 * 60
 oneYearSeconds = (4 * 365 + 1) * oneDaySeconds `div` 4
 oneMonthSeconds = oneYearSeconds `div` 12
 
+sixMonthSeconds :: Seconds
+sixMonthSeconds = 6 * oneMonthSeconds
+
 maxDissolveDelay :: Seconds
 maxDissolveDelay = 8 * oneYearSeconds
 
@@ -31,7 +34,7 @@ ytd :: Seconds -> Seconds
 ytd = (* oneYearSeconds)
 
 percent :: Integer -> Percentage
-percent n = Amount (n % 100)
+percent = Amount . (% 100)
 
 -- From https://docs.google.com/document/d/1wP7zEcWdb2hE7L7of2Zhf6LxbWOqWnKGQ6LdIlDPzsk/edit
 --
@@ -44,9 +47,8 @@ percentageOfSupply t = rf + (r0 - rf) * (v * v)
   where
     r0 = percent 10 -- initial rate at genesis time nG
     rf = percent 5 -- the final rate at time nT
-    v = fromIntegral (nT - min t nT) / fromIntegral (nT - nG)
-    nG = 0 -- genesis time (in seconds past genesis)
-    nT = 8 * oneYearSeconds -- final time (in seconds past genesis)
+    v = fromIntegral (nT - min t nT) / fromIntegral nT
+    nT = maxDissolveDelay -- final time (in seconds past genesis)
 
 data NNS = NNS
   { totalSupply :: ICP,
@@ -55,51 +57,48 @@ data NNS = NNS
     since :: Seconds
   }
 
+four_times_maxAgeBonus :: Seconds
+four_times_maxAgeBonus = 4 * maxAgeBonus
+
+ageBonus :: Seconds -> ICP
+ageBonus age =
+  fromIntegral (min age maxAgeBonus + four_times_maxAgeBonus)
+    / fromIntegral four_times_maxAgeBonus
+
+delayBonus :: Seconds -> ICP
+delayBonus delay =
+  fromIntegral (min delay maxDissolveDelay + maxDissolveDelay)
+    / fromIntegral maxDissolveDelay
+
 votingPower :: ICP -> Seconds -> Seconds -> ICP
-votingPower _ delay _ | delay < 6 * oneMonthSeconds = 0
-votingPower stake delay age =
-  let d = min delay maxDissolveDelay
-      d_stake =
-        stake + ((stake * fromIntegral d) / fromIntegral maxDissolveDelay)
-      a = min age maxAgeBonus
-   in d_stake + ((d_stake * fromIntegral a) / (4 * fromIntegral maxAgeBonus))
+votingPower stake delay age
+  | delay < sixMonthSeconds = 0
+  | otherwise = stake * delayBonus delay * ageBonus age
 
 -- Compute rewards calculated on a given day
 singleDay :: ICP -> Seconds -> Seconds -> State NNS ICP
-singleDay stake delay age = assert (stake >= 0) $
-  assert (delay >= 0) $
-    assert (age >= 0) $ do
-      nns <- get
-      let vp = votingPower stake delay age
-          dailyPercentage = percentageOfSupply (since nns) / 365.0
-          dailyReward = totalSupply nns * dailyPercentage
-          today = since nns + oneDaySeconds
-          -- fraction = vp / (totalSupply nns * votingPercentage nns today)
-          -- earned = dailyReward * fraction
-          -- Another way of writing 'earned' is the following, which shows
-          -- that if the voting population keeps pace with the increase in
-          -- supply, one's daily take remains the same.
-          earned
-            | votingPercentage nns today > 0 =
-              dailyPercentage * (vp / votingPercentage nns today)
-            | otherwise = 0
-          minted = max earned (dailyReward * mintingPercentage nns today)
-      put
+singleDay stake delay age = state $ \nns@NNS {..} ->
+  let vp = votingPower stake delay age
+      dailyPercentage = percentageOfSupply since / 365.0
+      dailyReward = totalSupply * dailyPercentage
+      today = since + oneDaySeconds
+      -- fraction = vp / (totalSupply nns * votingPercentage nns today)
+      -- earned = dailyReward * fraction
+      -- Another way of writing 'earned' is the following, which shows
+      -- that if the voting population keeps pace with the increase in
+      -- supply, one's daily take remains the same.
+      vperc = votingPercentage today
+      earned
+        | vperc > 0 = dailyPercentage * (vp / vperc)
+        | otherwise = 0
+      minted = max earned (dailyReward * mintingPercentage today)
+      supply = totalSupply + minted
+   in ( earned,
         nns
-          { totalSupply = totalSupply nns + minted,
+          { totalSupply = supply,
             since = today
           }
-      -- traceM $ "vp = " ++ show vp
-      -- traceM $ "dailyPercentage = " ++ show dailyPercentage
-      -- traceM $ "dailyReward = " ++ show dailyReward
-      -- traceM $ "today = " ++ show today
-      -- traceM $ "earned = " ++ show earned
-      -- traceM $ "minted = " ++ show minted
-      assert (earned >= 0) $
-        assert (dailyPercentage >= 0) $
-          assert (vp == 0 || vp >= stake) $
-            assert (votingPercentage nns today >= 0) $
-              pure earned
+      )
 
 -- Given a set of starting conditions in terms of total supply of ICP, seconds
 -- since genesis, an amount of ICP to be staked, a starting dissolve delay,
@@ -115,7 +114,8 @@ computeStake ::
   Seconds ->
   Seconds ->
   Seconds ->
-  ICP
+  Bool ->
+  [ICP]
 computeStake
   initialSupply
   votingPowerPerc
@@ -124,7 +124,8 @@ computeStake
   stake
   delay
   dissolve
-  duration =
+  duration
+  compound =
     assert (initialSupply > 0) $
       assert (startTime >= 0) $
         assert (stake >= 1) $
@@ -134,9 +135,9 @@ computeStake
                 (go 0 stake)
                 (NNS initialSupply votingPowerPerc mintingPerc startTime)
     where
-      go :: Seconds -> ICP -> State NNS ICP
+      go :: Seconds -> ICP -> State NNS [ICP]
       go t s
-        | t > duration = pure s
+        | t > duration = pure []
         | otherwise = do
           reward <-
             singleDay
@@ -149,7 +150,10 @@ computeStake
                   then t
                   else 0
               )
-          go (t + oneDaySeconds) (s + reward)
+          (reward :)
+            <$> go
+              (t + oneDaySeconds)
+              (if compound then s + reward else s)
 
 -- Result: ~403184
 scenario :: IO ()
@@ -170,3 +174,4 @@ scenario = do
         (delay * oneYearSeconds)
         (dissolve * oneYearSeconds)
         (duration * oneYearSeconds)
+        False

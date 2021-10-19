@@ -12,12 +12,15 @@ ghc-options:
 
 dependencies:
   - base >= 4.5 && < 5.0
+  - aeson
   - bytestring
   - containers
   - hedgehog
   - mtl
-  - simple-amount
   - pretty-show
+  - simple-amount
+  - split
+  - template-haskell
 
 library:
   source-dirs: src
