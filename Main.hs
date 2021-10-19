@@ -28,6 +28,7 @@ import System.Environment
 data Stats = Stats
   { s_stake :: Double,
     s_earnings :: Double,
+    s_total :: Double,
     s_apy :: Double
   }
   deriving (Show, Generic)
@@ -43,6 +44,7 @@ data Details = Details
     stakingDurationYears :: Double,
     votingPowerPercValue :: Amount 6,
     mintingPercValue :: Amount 6,
+    allEarnings :: [Double],
     yearlyStats :: [Stats],
     totalEarningsICP :: Double,
     compounding :: Bool,
@@ -52,26 +54,33 @@ data Details = Details
 
 deriving instance ToJSON Details
 
-calcStats :: ICP -> [ICP] -> [Stats]
-calcStats initialStake =
-  reverse . snd
+calcStats :: ICP -> Bool -> [ICP] -> [Stats]
+calcStats initialStake compounded =
+  reverse . (\(_, _, x) -> x)
     . foldl'
-      ( \(stake, acc) xs ->
+      ( \(stake, d, acc) xs ->
           let earned = sum xs
+              days = oneDaySeconds * genericLength xs
+              stake' =
+                if compounded
+                  then stake
+                  else initialStake
            in ( stake + earned,
+                d + days,
                 Stats
-                  { s_stake = fromRational (toRational stake),
+                  { s_stake = fromRational (toRational stake'),
                     s_earnings = fromRational (toRational earned),
+                    s_total = fromRational (toRational (stake + earned)),
                     s_apy =
-                      apy
-                        (oneDaySeconds * genericLength xs)
-                        stake
-                        (stake + earned)
+                      fromRational
+                        ( toRational
+                            (100 * (((stake' + earned) / stake') - 1))
+                        )
                   } :
                 acc
               )
       )
-      (initialStake, [])
+      (initialStake, 0, [])
     . chunksOf 365
 
 main :: IO ()
@@ -145,9 +154,10 @@ main = do
                     / fromIntegral oneYearSeconds,
                 votingPowerPercValue = voting,
                 mintingPercValue = minting,
-                yearlyStats = calcStats stake earnings,
+                allEarnings = map (fromRational . toRational) earnings,
+                yearlyStats = calcStats stake compound earnings,
                 totalEarningsICP = fromRational (toRational (final - stake)),
-                compounding = False,
+                compounding = compound,
                 avgApy = apy duration stake final
               }
     _ -> do
@@ -199,16 +209,16 @@ prop_limit :: IORef [Details] -> Property
 prop_limit apys = property $ do
   initialSupply <-
     forAll $ genAmount (Range.linear 469_000_000 1_000_000_000)
-  let votingPowerPerc = Amount (67 % 100)
-  -- votingPowerPerc <-
-  --   forAll $ genAmountFrac (Range.linear 1 100) (Range.singleton 100)
-  let mintingPerc = Amount (5 % 100)
-  -- mintingPerc <-
-  --   forAll $ genAmountFrac (Range.linear 1 100) (Range.singleton 100)
+  votingPowerPerc <-
+    -- We use 67% here because that's what it is today, and we're going to
+    -- assume for now that staking will become more, not less, popular in the
+    -- future.
+    forAll $ genAmountFrac (Range.linear 67 100) (Range.singleton 100)
+  mintingPerc <-
+    forAll $ genAmountFrac (Range.linear 5 100) (Range.singleton 100)
   startTime <- forAll $ Gen.integral (Range.linear 0 1_000_000_000)
   stake <- forAll $ genAmount (Range.linear 1 1_000_000)
-  let delay = 8 * oneYearSeconds
-  -- delay <- forAll $ Gen.integral (Range.linear 0 (8 * oneYearSeconds))
+  delay <- forAll $ Gen.integral (Range.linear 0 (8 * oneYearSeconds))
   dissolve <- forAll $ Gen.integral (Range.linear 0 (20 * oneYearSeconds))
   duration <- forAll $ Gen.integral (Range.linear 0 (20 * oneYearSeconds))
   let earnings =
@@ -224,14 +234,6 @@ prop_limit apys = property $ do
           False
       final = stake + sum earnings
       apy' = apy duration stake final
-  -- traceM $ "initialSupply = " ++ show (initialSupply)
-  -- traceM $ "votingPowerPerc = " ++ show (votingPowerPerc)
-  -- traceM $ "mintingPerc = " ++ show (mintingPerc)
-  -- traceM $ "startTime = " ++ show (startTime)
-  -- traceM $ "stake = " ++ show (stake)
-  -- traceM $ "delay = " ++ show (delay)
-  -- traceM $ "duration = " ++ show (duration)
-  -- traceM $ "final = " ++ show final
   when (apy' > 0) $
     liftIO $
       atomicModifyIORef
@@ -250,7 +252,8 @@ prop_limit apys = property $ do
                     fromIntegral duration / fromIntegral oneYearSeconds,
                   votingPowerPercValue = votingPowerPerc,
                   mintingPercValue = mintingPerc,
-                  yearlyStats = calcStats stake earnings,
+                  allEarnings = map (fromRational . toRational) earnings,
+                  yearlyStats = calcStats stake False earnings,
                   totalEarningsICP = fromRational (toRational (final - stake)),
                   compounding = False,
                   avgApy = apy'

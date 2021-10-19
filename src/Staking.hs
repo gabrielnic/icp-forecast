@@ -144,7 +144,7 @@ computeStake
               s
               ( if dissolve < 0 || t < dissolve
                   then delay
-                  else max 0 (delay - (dissolve - t))
+                  else max 0 (delay - (t - dissolve))
               )
               ( if dissolve < 0 || t < dissolve
                   then t
