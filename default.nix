@@ -20,7 +20,12 @@ in haskellPackages.developPackage rec {
   root = ./.;
 
   source-overrides = {};
-  overrides = self: super: with pkgs.haskell.lib; {};
+  overrides = self: super: with pkgs.haskell.lib; {
+    # simple-amount = self.callHackage "simple-amount" "0.1.0" {};
+    simple-amount = import ./simple-amount {
+      inherit pkgs; returnShellEnv = false;
+    };
+  };
 
   modifier = drv: pkgs.haskell.lib.overrideCabal drv (attrs: {
     buildTools = (attrs.buildTools or []) ++ [
