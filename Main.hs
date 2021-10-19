@@ -87,40 +87,33 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    [stake, delay, dissolve, duration, compound] ->
-      print $
-        read stake
-          + sum
-            ( computeStake
-                469_000_000
-                (const 0.67)
-                (const 0.15)
-                (5 * oneMonthSeconds)
-                (read stake)
-                (read delay * oneYearSeconds)
-                (read dissolve * oneYearSeconds)
-                (read duration * oneYearSeconds)
-                (read compound)
-            )
-    [ floor
+    [ "--start",
+      floor
         . (* fromIntegral oneYearSeconds)
         . (read :: String -> Amount 6) ->
         start,
-      (read :: String -> Amount 6) -> voting,
-      (read :: String -> Amount 6) -> minting,
+      "--voting",
+      (/ 100) . (read :: String -> Amount 6) -> voting,
+      "--minting",
+      (/ 100) . (read :: String -> Amount 6) -> minting,
+      "--stake",
       (read :: String -> ICP) -> stake,
+      "--delay",
       floor
         . (* fromIntegral oneYearSeconds)
         . (read :: String -> Amount 6) ->
         delay,
+      "--dissolve",
       floor
         . (* fromIntegral oneYearSeconds)
         . (read :: String -> Amount 6) ->
         dissolve,
+      "--duration",
       floor
         . (* fromIntegral oneYearSeconds)
         . (read :: String -> Amount 6) ->
         duration,
+      "--compound",
       (read :: String -> Bool) -> compound
       ] -> do
         let earnings =
@@ -212,8 +205,9 @@ prop_limit apys = property $ do
   votingPowerPerc <-
     -- We use 67% here because that's what it is today, and we're going to
     -- assume for now that staking will become more, not less, popular in the
-    -- future.
-    forAll $ genAmountFrac (Range.linear 67 100) (Range.singleton 100)
+    -- future. Note that 250% voting power is possible if _all_ of supply is
+    -- staked in 8-year neurons, and has been so for more than four years.
+    forAll $ genAmountFrac (Range.linear 67 250) (Range.singleton 100)
   mintingPerc <-
     forAll $ genAmountFrac (Range.linear 5 100) (Range.singleton 100)
   startTime <- forAll $ Gen.integral (Range.linear 0 1_000_000_000)
