@@ -35,20 +35,12 @@ in haskellPackages.developPackage rec {
       haskellPackages.hasktags
       haskellPackages.ghcid
       haskellPackages.ormolu
-      pkgs.mpfr.out
-      pkgs.mpfr.dev
     ];
 
     passthru = {
       nixpkgs = pkgs;
       inherit haskellPackages;
     };
-
-    shellHook = ''
-      CABAL_REPL="cabal repl --extra-lib-dirs=${pkgs.mpfr.out}/lib \
-                             --extra-lib-dirs=${pkgs.gmp.out}/lib"
-      export CABAL_REPL
-    '';
   });
 
   inherit returnShellEnv;

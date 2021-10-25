@@ -8,7 +8,6 @@ module Staking where
 import Amount
 import Control.Exception (assert)
 import Control.Monad.State hiding (lift)
-import Data.Ratio
 
 type Seconds = Integer
 
@@ -30,12 +29,6 @@ maxDissolveDelay = 8 * oneYearSeconds
 maxAgeBonus :: Seconds
 maxAgeBonus = 4 * oneYearSeconds
 
-ytd :: Seconds -> Seconds
-ytd = (* oneYearSeconds)
-
-percent :: Integer -> Percentage
-percent = Amount . (% 100)
-
 -- From https://docs.google.com/document/d/1wP7zEcWdb2hE7L7of2Zhf6LxbWOqWnKGQ6LdIlDPzsk/edit
 --
 -- "Calling R0 the initial rate at genesis time G, Rf the final rate, and T
@@ -43,12 +36,11 @@ percent = Amount . (% 100)
 -- T is":
 --         R(t) = Rf + (R0-Rf) [(t-T) / (G-T)]^2
 percentageOfSupply :: Seconds -> Percentage
-percentageOfSupply t = rf + (r0 - rf) * (v * v)
+percentageOfSupply t = 0.05 * (v * v + 1)
   where
-    r0 = percent 10 -- initial rate at genesis time nG
-    rf = percent 5 -- the final rate at time nT
-    v = fromIntegral (nT - min t nT) / fromIntegral nT
-    nT = maxDissolveDelay -- final time (in seconds past genesis)
+    v =
+      fromIntegral (max 0 (maxDissolveDelay - t))
+        / fromIntegral maxDissolveDelay
 
 data NNS = NNS
   { totalSupply :: ICP,
