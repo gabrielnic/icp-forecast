@@ -42,6 +42,9 @@ percentageOfSupply t = 0.05 * (v * v + 1)
       fromIntegral (max 0 (maxDissolveDelay - t))
         / fromIntegral maxDissolveDelay
 
+-- jww (2021-10-26): Also take into account the amount of minting that may
+-- occur to pay node providers, and the amount of burning that may occur due
+-- to people converting ICP into cycles.
 data NNS = NNS
   { totalSupply :: ICP,
     votingPercentage :: Seconds -> Percentage,
