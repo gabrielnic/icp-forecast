@@ -1,5 +1,14 @@
 # ICP Staking Forecaster
 
+**DISCLAIMER**: This code is provided with no guarantees of accuracy or
+fitness for any purpose. It attempts to estimate the rewards algorithm used by
+the NNS Governance canister on the Internet Computer, but is not guaranteed to
+even be consistent with that canister since it is a re-implementation in
+Haskell and not directly derived from the original Rust code. Use at your own
+risk.
+
+## Usage
+
 To use (assuming you have the `jq` utility installed):
 
 ```
